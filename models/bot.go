@@ -71,11 +71,11 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 	if sender.UserID == Config.TelegramUserID || sender.UserID == int(Config.QQID) {
 		sender.IsAdmin = true
 	}
-	logs.Info(sender.UserID)
-	if IsUserAdmin(strconv.Itoa(sender.UserID)) {
-		sender.IsAdmin = true
+	if sender.IsAdmin == false {
+		if IsUserAdmin(strconv.Itoa(sender.UserID)) {
+			sender.IsAdmin = true
+		}
 	}
-
 	for i := range codeSignals {
 		for j := range codeSignals[i].Command {
 			if codeSignals[i].Command[j] == head {
@@ -90,29 +90,38 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 	}
 	switch msg {
 	default:
+		{ //沃邮箱
+			ss := regexp.MustCompile(`https://nyan.mail.*3D`).FindStringSubmatch(msg)
+			if len(ss) > 0 {
+				var u User
+				if db.Where("number = ?", sender.UserID).First(&u).Error != nil {
+					return 0
+				}
+				db.Model(u).Updates(map[string]interface{}{
+					"womail": ss[0],
+				})
+				sender.Reply(fmt.Sprintf("沃邮箱提交成功!"))
+				return nil
+			}
+		}
 		{
-			if strings.Contains(msg, "wskey=") {
-				rsp := cmd(fmt.Sprintf(`python3 test.py "%s"`, msg), &Sender{})
-				logs.Info(rsp)
-				ss1 := regexp.MustCompile(`pin=([^;=\s]+);wskey=([^;=\s]+)`).FindAllStringSubmatch(msg, -1)
-				if strings.Contains(rsp, "错误") {
-					logs.Error("wskey错误")
-					sender.Reply(fmt.Sprintf("wskey错误"))
-				} else {
-
-					if len(ss1) > 0 {
-						for _, s := range ss1 {
-							ck := JdCookie{
-								PtPin: s[1],
-								PtKey: rsp,
-								WsKey: s[2],
-							}
-
-							ss := regexp.MustCompile(`pt_key=([^;=\s]+);pt_pin=([^;=\s]+)`).FindAllStringSubmatch(rsp, -1)
-							for _, s1 := range ss {
-								ck.PtPin = s1[2]
-								ck.PtKey = s1[1]
-							}
+			ss := regexp.MustCompile(`pin=([^;=\s]+);wskey=([^;=\s]+)`).FindAllStringSubmatch(msg, -1)
+			if len(ss) > 0 {
+				for _, s := range ss {
+					wkey := "pin=" + s[1] + ";wskey=" + s[2] + ";"
+					rsp := cmd(fmt.Sprintf(`python3 test.py "%s"`, wkey), &Sender{})
+					if strings.Contains(rsp, "错误") {
+						logs.Error("wskey错误")
+						sender.Reply(fmt.Sprintf("wskey错误"))
+					} else {
+						ptKey := FetchJdCookieValue("pt_key", rsp)
+						ptPin := FetchJdCookieValue("pt_pin", rsp)
+						ck := JdCookie{
+							PtPin: ptPin,
+							PtKey: ptKey,
+							WsKey: s[2],
+						}
+						if CookieOK(&ck) {
 
 							if sender.IsQQ() {
 								ck.QQ = sender.UserID
@@ -121,44 +130,23 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 							}
 							if nck, err := GetJdCookie(ck.PtPin); err == nil {
 								nck.InPool(ck.PtKey)
-								if nck.WsKey == "" || len(nck.WsKey) == 0 {
-									nck.Updates(JdCookie{
-										WsKey: ck.WsKey,
-									})
-									if sender.IsQQ() {
-										ck.Update(QQ, ck.QQ)
-									}
-									nck.Update(PtKey, ck.PtKey)
-									msg := fmt.Sprintf("写入WsKey，并更新账号%s", ck.PtPin)
-									sender.Reply(fmt.Sprintf(msg))
-									(&JdCookie{}).Push(msg)
-									logs.Info(msg)
-								} else {
-									if nck.WsKey == ck.WsKey {
-										msg := fmt.Sprintf("重复写入")
-										sender.Reply(fmt.Sprintf(msg))
-										(&JdCookie{}).Push(msg)
-										logs.Info(msg)
-									} else {
-										nck.Updates(JdCookie{
-											WsKey: ck.WsKey,
-										})
-										msg := fmt.Sprintf("更新WsKey，并更新账号%s", ck.PtPin)
-										sender.Reply(fmt.Sprintf(msg))
-										(&JdCookie{}).Push(msg)
-										logs.Info(msg)
-									}
-								}
-							} else {
-								NewJdCookie(&ck)
-								msg := fmt.Sprintf("添加账号，用户名：%s", ck.PtPin)
+								msg := fmt.Sprintf("更新账号，%s", ck.PtPin)
 								if sender.IsQQ() {
 									ck.Update(QQ, ck.QQ)
 								}
 								sender.Reply(fmt.Sprintf(msg))
-								logs.Info(msg)
-							}
+								(&JdCookie{}).Push(msg)
+							} else {
+								NewJdCookie(&ck)
 
+								msg := fmt.Sprintf("添加账号，账号名:%s", ck.PtPin)
+								if sender.IsQQ() {
+									ck.Update(QQ, ck.QQ)
+								}
+								sender.Reply(fmt.Sprintf(msg))
+								sender.Reply(ck.Query())
+								(&JdCookie{}).Push(msg)
+							}
 						}
 						go func() {
 							Save <- &JdCookie{}
@@ -166,7 +154,6 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 						return nil
 					}
 				}
-
 			}
 		}
 		{ //tyt
@@ -223,6 +210,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 									ck.Update(QQ, ck.QQ)
 								}
 								sender.Reply(fmt.Sprintf(msg))
+								sender.Reply(ck.Query())
 								(&JdCookie{}).Push(msg)
 								logs.Info(msg)
 							}
@@ -231,6 +219,10 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 						sender.Reply(fmt.Sprintf("无效"))
 					}
 				}
+				go func() {
+					Save <- &JdCookie{}
+				}()
+				return nil
 			}
 		}
 		{ //
@@ -273,6 +265,7 @@ var handleMessage = func(msgs ...interface{}) interface{} {
 									ck.Update(QQ, ck.QQ)
 								}
 								sender.Reply(fmt.Sprintf(msg))
+								sender.Reply(ck.Query())
 								logs.Info(msg)
 							}
 						}

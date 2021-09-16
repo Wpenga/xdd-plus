@@ -28,10 +28,20 @@ Whiskey更新
 修复转换错误自动改为false 修复七次无限转换问题
 新增 AtTime参数 不配置导致失败得别怪我
 AtTime:  #填写1-12之间的数  填错自负默认为10  10点容易出现高峰超时。
+IsHelp:   #填写true或者false  默认false 是否往容器添加助力码
+IsOldV4: #填写true或者false  默认false  是否新版或者旧版V4
 
+fix 重大BUG修复，解决以下几个问题，
+1.新增账号部分参数空白
+2.不管是CK新增还是WSKEY新增账号导致清空CK，由1导致的
+3.新增添加后自动回复查询参数。
+4.修复账号无限判错问题。
 以上是做完了 以下是待开发
 
 新增纯CK版本 可配置调整为WSKEY+CK  和纯CK版本
+验证码登录直接接入
+plus登陆页面 ---会员中心给你们看个样板图把
+
 
 考虑仓库私有化  另附如果不喜欢别用  ninja和xdd魔改版大有人做  免费开源没收你钱总不能还挨你一顿喷？
 
@@ -48,6 +58,8 @@ https://thin-hill-428.notion.site/2-8Faker-QL-pannel-Faker-Repository-environmen
 	req := httplib.Post(c.Address + "/api/auth")
 	修改为
 	req := httplib.Post(c.Address + "/auth")
+
+	修改为可配置
 
 
 
